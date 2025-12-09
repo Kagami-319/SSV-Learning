@@ -185,18 +185,27 @@ Notes
   L >= 1.1 * C * sqrt(1 + T_max) to avoid boundary clipping. (Recall that, the ball is actually expanding.)
 """
 
-def make_init_field(kind: str, A1: float, R1: float, L: float, N: int):     #Define the initial vorticity
+def make_init_field(kind: str, A1: float, R1: float, L: float, N: int):
     x = np.linspace(-L, L, N, endpoint=False)
     y = np.linspace(-L, L, N, endpoint=False)
     X, Y = np.meshgrid(x, y, indexing='xy')
-    if kind == "disk":  #Where we take a disk as the initial vorticity
+    if kind == "disk":
         r = np.sqrt(X**2 + Y**2)
         w0 = (r <= R1).astype(np.float32) * A1
-    elif kind == "two_blobs": #Where we take two Gaussian as initial vorticity
-        w0 = (
-            A1 * np.exp(-((X-1.5)**2 + Y**2)/(R1**2))
-            - A1 * np.exp(-((X+1.5)**2 + Y**2)/(R1**2))
-        ).astype(np.float32)
+
+    elif kind == "two_blobs":  # two non-radial Gaussians with different peaks/centers
+        x1, y1 = -1.5, 0.5
+        sigma1 = R1
+        A_main = A1
+        x2, y2 = 1.0, -0.8
+        sigma2 = 1.3 * R1
+        A_side = 0.6 * A1
+
+        blob1 = A_main * np.exp(-(((X - x1)**2 + (Y - y1)**2) / sigma1**2))
+        blob2 = A_side * np.exp(-(((X - x2)**2 + (Y - y2)**2) / sigma2**2))
+
+        w0 = (blob1 + blob2).astype(np.float32)
+
     else:
         raise ValueError(f"Unknown init kind: {kind}")
     return w0
