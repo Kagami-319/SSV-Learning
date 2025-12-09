@@ -138,7 +138,15 @@ def main():
         # plot row: truth(x,y), physical pred ω(x,y), ssv pred→ω(x,y)
         for c, Z in enumerate([WT, Yp, Ys]):
             ax = fig.add_subplot(nrows, 3, r * 3 + c + 1, projection="3d")
-            ax.plot_surface(X.cpu().numpy(), Y.cpu().numpy(), Z, linewidth=0, antialiased=True)
+            surf = ax.plot_surface(
+                X.cpu().numpy(), Y.cpu().numpy(), Z,
+                rstride=6, cstride=6,
+                linewidth=0.3,
+                edgecolor="k",
+                color="#66CCFF",
+                antialiased=True,
+            )
+            ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.6)
             title = ["Truth ω(x,y)", "Physical pred ω(x,y)", "SSV pred→ω(x,y)"][c]
             ax.set_title(f"t={tval:g}  {title}")
             ax.set_xlabel("x"); ax.set_ylabel("y")
@@ -148,7 +156,7 @@ def main():
         bottom=0.05, top=0.95,
         wspace=0.25, hspace=0.35
     )
-    fig.savefig(args.out, dpi=200, bbox_inches="tight")
+    fig.savefig(args.out, dpi=300, bbox_inches="tight")
     print(f"[compare_surface3d_physical] saved figure to {args.out}")
 
 if __name__ == "__main__":

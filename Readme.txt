@@ -25,9 +25,10 @@ python compare_surface3d_physical.py --model concat --times 12,14,16,18 --C 4.0 
 
 Train on 1D Viscous Burgers under FCNet
 
-python train_fcnet_burgers_1d.py --model fcnet --truth artifacts/truth_burgers_1d.npz --t_train_max 10 --nsamples 60000 --epochs 400 --batch 1024 --lr 1e-3 --width 128 --depth 4 --latent 128 --phys_ckpt artifacts/ckpt_fcnet_physical_burgers.pt --ssv_ckpt artifacts/ckpt_fcnet_ssv_burgers.pt
+python train_burgers_1d.py --model fcnet --truth artifacts/truth_burgers_1d.npz --t_train_max 0.5 --nsamples 60000 --epochs 400 --batch 1024 --lr 1e-3 --width 128 --depth 4 --latent 128 --phys_ckpt artifacts/ckpt_fcnet_physical_burgers.pt --ssv_ckpt artifacts/ckpt_fcnet_ssv_burgers.pt
 
 
+python compare_burgers_nets_1d.py --truth artifacts/truth_burgers_1d.npz --artifacts artifacts --model fcnet --times 12,14,16,18 --x_clip 8.0 --width 128 --depth 4 --latent 128 --out artifacts/compare_burgers_fcnet_t12_14_16_18.png
 
 
 
@@ -35,5 +36,7 @@ python train_fcnet_burgers_1d.py --model fcnet --truth artifacts/truth_burgers_1
 
 Train on 1D Viscous Burgers under ConcatMLP
 
-python train_fcnet_burgers_1d.py --model concat --truth artifacts/truth_burgers_1d.npz --t_train_max 10 --nsamples 60000 --epochs 400 --batch 1024 --lr 1e-3 --width 128 --depth 4 --latent 128 --phys_ckpt artifacts/ckpt_concat_physical_burgers.pt --ssv_ckpt artifacts/ckpt_concat_ssv_burgers.pt
+python train_burgers_1d.py --model concat --truth artifacts/truth_burgers_1d.npz --t_train_max 0.5 --nsamples 60000 --epochs 400 --batch 1024 --lr 1e-3 --width 128 --depth 4 --latent 128 --phys_ckpt artifacts/ckpt_concat_physical_burgers.pt --ssv_ckpt artifacts/ckpt_concat_ssv_burgers.pt
 
+
+python compare_burgers_nets_1d.py --truth artifacts/truth_burgers_1d.npz --artifacts artifacts --model concat --times 2.5 --x_clip 8.0 --width 128 --depth 4 --latent 128 --out artifacts/compare_burgers_concat_t2.5.png

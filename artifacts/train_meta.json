@@ -1,0 +1,16 @@
+{
+  "model": "concat",
+  "C": 4.0,
+  "tmin": 0.0,
+  "tmax": 5.0,
+  "epochs": 20,
+  "iters": 100,
+  "M": 8192,
+  "basis_dim": 128,
+  "width_branch": 256,
+  "depth_branch": 4,
+  "width_trunk": 256,
+  "depth_trunk": 4,
+  "width": 256,
+  "depth": 5
+}
