@@ -1,6 +1,9 @@
 """Simple 2D incompressible Navier–Stokes (vorticity form) solver on a periodic box
 advanced from t=0 with ETDRK4 (Kassam–Trefethen).
 
+⚡ PERFORMANCE NOTE: For faster simulation (3-5x speedup), use gen_ns_init_optimized.py
+   Run: python benchmark_ns_solver.py to compare performance
+
 Domain and Variables
 --------------------
 - Periodic box: [-L, L] × [-L, L] with N×N grid (uniform spacing).
