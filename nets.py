@@ -284,6 +284,7 @@ class SimplifiedKAN(nn.Module):
     简化的KAN实现，使用线性层+可学习的基函数
     这个版本更接近原始KAN思想但更容易训练
     """
+
     def __init__(self, in_dim: int, out_dim: int, hidden_dim: int = 64,
                  num_basis: int = 8, activation: nn.Module = nn.SiLU):
         super().__init__()
@@ -292,17 +293,22 @@ class SimplifiedKAN(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_basis = num_basis
 
+        # 把 activation 统一成“模块实例”
+        act = activation() if isinstance(activation, type) else activation
+
         # 基函数网络：学习输入到基函数的映射
         self.basis_net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
-            activation,
+            act,
             nn.Linear(hidden_dim, num_basis * out_dim)
         )
 
         # 系数网络：学习基函数的系数
+        # 用一个新的实例更稳（即使 SiLU 没参数也不影响）
+        act2 = activation() if isinstance(activation, type) else activation
         self.coeff_net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
-            activation,
+            act2,
             nn.Linear(hidden_dim, num_basis * out_dim)
         )
 
