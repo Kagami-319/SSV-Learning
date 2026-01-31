@@ -21,7 +21,6 @@
 import argparse, numpy as np, torch, torch.nn as nn, torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from nets import EfficientKAN  # 导入 KAN 网络
 
 
 # --------------------------- Models ---------------------------
@@ -144,126 +143,6 @@ class FieldDatasetInterp(Dataset):
         return self.coords[i], self.targets[i]
 
 
-class _FCNetCore(nn.Module):
-    """
-    KAN core with separate Branch/Trunk and a linear readout on their
-    elementwise product.
-
-    y = Readout( sum_k Branch_k(branch_x) * Trunk_k(trunk_x) )
-    """
-    def __init__(
-        self,
-        branch_in: int = 1,
-        trunk_in: int = 3,
-        basis_dim: int = 128,
-        width_branch: int = 256,
-        depth_branch: int = 4,
-        width_trunk: int = 256,
-        depth_trunk: int = 4,
-        grid_size: int = 5,
-        spline_order: int = 3,
-        scale_base: float = 1.0,
-        scale_spline: float = 1.0,
-        out_dim: int = 1,
-    ) -> None:
-        super().__init__()
-
-        # 构建Branch KAN网络
-        branch_layers = [branch_in]
-        for _ in range(depth_branch - 1):
-            branch_layers.append(width_branch)
-        branch_layers.append(basis_dim)
-
-        self.branch = EfficientKAN(
-            branch_layers,
-            grid_size=grid_size,
-            spline_order=spline_order,
-            scale_base=scale_base,
-            scale_spline=scale_spline
-        )
-
-        # 构建Trunk KAN网络
-        trunk_layers = [trunk_in]
-        for _ in range(depth_trunk - 1):
-            trunk_layers.append(width_trunk)
-        trunk_layers.append(basis_dim)
-
-        self.trunk = EfficientKAN(
-            trunk_layers,
-            grid_size=grid_size,
-            spline_order=spline_order,
-            scale_base=scale_base,
-            scale_spline=scale_spline
-        )
-
-        # 保持原有的readout层
-        self.readout = nn.Linear(1, out_dim)
-
-    def forward(self, branch_x: torch.Tensor, trunk_x: torch.Tensor) -> torch.Tensor:
-        B = self.branch(branch_x)           # (..., basis_dim)
-        T = self.trunk(trunk_x)             # (..., basis_dim)
-        z = (B * T).sum(dim=-1, keepdim=True)  # (..., 1)
-        return self.readout(z).squeeze(-1)
-
-
-class FCNetKAN(nn.Module):
-    """
-    KAN-based Factorized Coordinate Network for 1D Burgers.
-    Compatible with train_one() interface: forward(bvec, coords)
-    
-    Note: bvec is actually ignored in this implementation since we're using
-    a simpler architecture. The coords [B, 2] contain (t, x) or (tau, xi).
-    """
-    def __init__(
-        self,
-        basis_dim: int = 128,
-        width_branch: int = 256,
-        depth_branch: int = 4,
-        width_trunk: int = 256,
-        depth_trunk: int = 4,
-        grid_size: int = 5,
-        spline_order: int = 3,
-        scale_base: float = 1.0,
-        scale_spline: float = 1.0,
-        out_dim: int = 1,
-    ) -> None:
-        super().__init__()
-        # Branch 接受 coords 的第一个维度 (t 或 tau)
-        # Trunk 接受完整的 coords (t,x) 或 (tau,xi)
-        self.core = _FCNetCore(
-            branch_in=1,      # 只用时间维度
-            trunk_in=2,       # 时空坐标 (t,x) 或 (tau,xi)
-            basis_dim=basis_dim,
-            width_branch=width_branch,
-            depth_branch=depth_branch,
-            width_trunk=width_trunk,
-            depth_trunk=depth_trunk,
-            grid_size=grid_size,
-            spline_order=spline_order,
-            scale_base=scale_base,
-            scale_spline=scale_spline,
-            out_dim=out_dim,
-        )
-        self._forward_count = 0  # 用于只打印一次
-
-    def forward(self, bvec: torch.Tensor, coords: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            bvec: [B, branch_in] - branch vector (ignored in this implementation)
-            coords: [B, 2] - coordinates (t,x) or (tau,xi)
-        Returns:
-            [B, 1] - predicted field values
-        """
-        if self._forward_count == 0:
-            print("✓ KAN is being used!")
-            self._forward_count = 1
-        
-        # Branch 使用时间维度: coords[:, 0:1]
-        branch_x = coords[:, 0:1]  # [B, 1] - t or tau
-        # Trunk 使用完整坐标
-        trunk_x = coords           # [B, 2] - (t,x) or (tau,xi)
-        
-        return self.core(branch_x, trunk_x).unsqueeze(-1)  # [B, 1]
 # --------------------------- Utilities ------------------------
 
 def box_initial(x, a=-1.0, b=1.0, amp=1.0):
@@ -441,41 +320,13 @@ def main():
 
     # ----------------- build models -----------------
     if arch == 'fcnet':
-        # 使用 KAN 版本的 FCNet
-        model_phys = FCNetKAN(
-            basis_dim=args.latent,
-            width_branch=args.width,
-            depth_branch=args.depth,
-            width_trunk=args.width,
-            depth_trunk=args.depth,
-            grid_size=5,
-            spline_order=3,
-            out_dim=1
-        )
-        model_ssv = FCNetKAN(
-            basis_dim=args.latent,
-            width_branch=args.width,
-            depth_branch=args.depth,
-            width_trunk=args.width,
-            depth_trunk=args.depth,
-            grid_size=5,
-            spline_order=3,
-            out_dim=1
-        )
-        print("=" * 60)
-        print("✓ 使用 KAN 版本的 FCNet")
-        print(f"  - Basis dimension: {args.latent}")
-        print(f"  - Branch/Trunk width: {args.width}")
-        print(f"  - Branch/Trunk depth: {args.depth}")
-        print("=" * 60)
+        model_phys = FCNet1D(branch_in=len(x_enc), trunk_in=2,
+                             width=args.width, depth=args.depth, latent=args.latent)
+        model_ssv  = FCNet1D(branch_in=len(x_enc), trunk_in=2,
+                             width=args.width, depth=args.depth, latent=args.latent)
     else:
         model_phys = ConcatMLP1D(in_dim=2, width=args.width, depth=args.depth)
         model_ssv  = ConcatMLP1D(in_dim=2, width=args.width, depth=args.depth)
-        print("=" * 60)
-        print("✓ 使用标准 MLP")
-        print(f"  - Width: {args.width}")
-        print(f"  - Depth: {args.depth}")
-        print("=" * 60)
 
     # ----------------- Train -----------------
     print("Training PHYS ...")

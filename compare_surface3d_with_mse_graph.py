@@ -15,6 +15,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+# ---- plotting style knobs (paper-friendly) ----
+SURF_COLORS = ["#4EA3FF"] * 3  # one unified light blue
+SURF_ALPHAS = [0.7, 0.7, 0.7]
+EDGE_COLOR  = (0.12, 0.22, 0.35)  # light gray with alpha
+EDGE_LW     = 0.18
+RS, CS      = 5, 5  # rstride / cstride
+VIEW_ELEV, VIEW_AZIM = 25, -60
+
 from nets import make_model, device_select
 
 
@@ -104,13 +112,16 @@ def mse_at_time(
 
     # relative RMSE: sqrt( mean((pred-truth)^2) / mean(truth^2) )
     denom = float(np.nanmean(WT ** 2))
-    eps = 1e-12
-    denom = max(denom, eps)
 
     mse_p = float(np.nanmean((Yp - WT) ** 2))
     mse_s = float(np.nanmean((Ys - WT) ** 2))
-    rmse_rel_p = float(math.sqrt(mse_p / denom))
-    rmse_rel_s = float(math.sqrt(mse_s / denom))
+
+    if (not np.isfinite(denom)) or denom <= 0.0:
+        rmse_rel_p = float("nan")
+        rmse_rel_s = float("nan")
+    else:
+        rmse_rel_p = float(math.sqrt(mse_p / denom))
+        rmse_rel_s = float(math.sqrt(mse_s / denom))
     return rmse_rel_p, rmse_rel_s
 
 
@@ -338,21 +349,30 @@ def main():
             zpad = 0.02 * (zmax_row - zmin_row)
         zlo, zhi = zmin_row - zpad, zmax_row + zpad
 
+        row_axes = []
         for c, Z in enumerate([WT, Yp, Ys]):
             ax = fig.add_subplot(max(nrows, 1), 3, r * 3 + c + 1, projection="3d")
             ax.plot_surface(
                 X.cpu().numpy(), Y.cpu().numpy(), Z,
-                rstride=6, cstride=6,
-                linewidth=0.3,
-                edgecolor="k",
-                color="#66CCFF",
+                rstride=RS, cstride=CS,
+                linewidth=EDGE_LW,
+                edgecolor=EDGE_COLOR,
+                color=SURF_COLORS[c],
+                alpha=SURF_ALPHAS[c],
                 antialiased=True,
             )
-            ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.6)
-            title = ["Truth ω(x,y)", "Physical pred ω(x,y)", "SSV pred→ω(x,y)"][c]
-            ax.set_title(f"t={tval:g}  {title}")
+            ax.grid(True, linestyle="--", linewidth=0.35, alpha=0.45)
+            row_axes.append(ax)
+                        # compact titles; put t-label on the left of each row instead of repeating
+            if c == 0:
+                ax.set_title("Truth ω(x,y)")
+            elif c == 1:
+                ax.set_title(f"Physical  (relRMSE={mp:.3e})")
+            else:
+                ax.set_title(f"SSV  (relRMSE={ms:.3e})")
             ax.set_xlabel("x")
             ax.set_ylabel("y")
+            ax.view_init(elev=VIEW_ELEV, azim=VIEW_AZIM)
 
             # (x,y): fixed within this row (same t), but varies with t across rows
             ax.set_xlim(-R, R)
@@ -361,8 +381,15 @@ def main():
             # (z): fixed within this row (same t), but varies with t across rows
             ax.set_zlim(zlo, zhi)
 
+        # Put the time label on the left of each row (avoid repeating in every panel title)
+        if row_axes:
+            y0 = min(a.get_position().y0 for a in row_axes)
+            y1 = max(a.get_position().y1 for a in row_axes)
+            ymid = 0.5 * (y0 + y1)
+            fig.text(0.01, ymid, f"t={tval:g}", va="center", ha="left", fontsize=12)
 
-    fig.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.95, wspace=0.25, hspace=0.35)
+
+    fig.subplots_adjust(left=0.09, right=0.97, bottom=0.05, top=0.95, wspace=0.25, hspace=0.35)
 
     # save per-plot-time RMSEs
     mse_path = args.mse_out.strip() or (os.path.splitext(args.out)[0] + "_rmse.csv")

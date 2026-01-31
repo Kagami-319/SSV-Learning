@@ -1,9 +1,6 @@
 """Simple 2D incompressible Navier–Stokes (vorticity form) solver on a periodic box
 advanced from t=0 with ETDRK4 (Kassam–Trefethen).
 
-⚡ PERFORMANCE NOTE: For faster simulation (3-5x speedup), use gen_ns_init_optimized.py
-   Run: python benchmark_ns_solver.py to compare performance
-
 Domain and Variables
 --------------------
 - Periodic box: [-L, L] × [-L, L] with N×N grid (uniform spacing).
@@ -35,7 +32,6 @@ Caveats
 import argparse
 import os
 import numpy as np
-from tqdm import tqdm
 
 def _wavenumbers(N, L):
     """Return 1D wave numbers for domain [-L, L] with N points (period 2L)."""
@@ -140,7 +136,7 @@ def simulate_vorticity(
     snaps = []
 
     nsteps = int(np.round(T/dt))
-    for n in tqdm(range(nsteps+1), desc="Simulating", unit="step"):
+    for n in range(nsteps+1):
         t = n*dt
         if n % save_every == 0:
             times.append(t)
