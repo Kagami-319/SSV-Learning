@@ -15,6 +15,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+# ---- plotting style knobs (paper-friendly) ----
+SURF_COLORS = ["#4EA3FF"] * 3  # one unified light blue
+SURF_ALPHAS = [0.7, 0.7, 0.7]
+EDGE_COLOR  = (0.12, 0.22, 0.35)  # light gray with alpha
+EDGE_LW     = 0.18
+RS, CS      = 5, 5  # rstride / cstride
+VIEW_ELEV, VIEW_AZIM = 25, -60
+
 from nets import make_model, device_select
 
 
@@ -102,16 +110,19 @@ def mse_at_time(
     Ys[~m_np] = np.nan
     Yp[~m_np] = np.nan
 
-    # relative RMSE: sqrt( mean((pred-truth)^2) / mean(truth^2) )
+    # relative MSE: sqrt( mean((pred-truth)^2) / mean(truth^2) )
     denom = float(np.nanmean(WT ** 2))
-    eps = 1e-12
-    denom = max(denom, eps)
 
     mse_p = float(np.nanmean((Yp - WT) ** 2))
     mse_s = float(np.nanmean((Ys - WT) ** 2))
-    rmse_rel_p = float(math.sqrt(mse_p / denom))
-    rmse_rel_s = float(math.sqrt(mse_s / denom))
-    return rmse_rel_p, rmse_rel_s
+
+    if (not np.isfinite(denom)) or denom <= 0.0:
+        relmse_p = float("nan")
+        relmse_s = float("nan")
+    else:
+        relmse_p = float((mse_p / denom))
+        relmse_s = float((mse_s / denom))
+    return relmse_p, relmse_s
 
 
 
@@ -181,11 +192,11 @@ def main():
     # existing: per-plot-time RMSE csv
     ap.add_argument("--mse_out", type=str, default="", help="CSV path to save per-plot-time spatial RMSEs")
 
-    # new: interval relative RMSE
+    # new: interval relative MSE
     ap.add_argument("--mse_interval", type=str, default="",
-                    help="Time interval 'a,b' or 'a:b' to compute relative RMSE on uniform time samples (independent of --times).")
+                    help="Time interval 'a,b' or 'a:b' to compute relative MSE on uniform time samples (independent of --times).")
     ap.add_argument("--mse_interval_n", type=int, default=100, help="Number of uniform time samples in [a,b].")
-    ap.add_argument("--mse_interval_out", type=str, default="", help="CSV path for interval relative RRMSEs")
+    ap.add_argument("--mse_interval_out", type=str, default="", help="CSV path for interval relative RelMSEs")
 
     args = ap.parse_args()
     device = device_select(args.device)
@@ -234,8 +245,8 @@ def main():
                 # skip rows like "mean,..." if you ever append them
                 try:
                     t = float(row["t"])
-                    p = float(row["rmse_physical"])
-                    s = float(row["rmse_ssv"])
+                    p = float(row["relmse_physical"])
+                    s = float(row["relmse_ssv"])
                 except Exception:
                     continue
                 ts.append(t); mp.append(p); ms.append(s)
@@ -243,10 +254,10 @@ def main():
         ts = np.asarray(ts); mp = np.asarray(mp); ms = np.asarray(ms)
 
         plt.figure()
-        plt.plot(ts, mp, label="rel_rmse_physical")
-        plt.plot(ts, ms, label="rel_rmse_ssv")
+        plt.plot(ts, mp, label="RelMse_physical")
+        plt.plot(ts, ms, label="RelMse_ssv")
         plt.xlabel("t")
-        plt.ylabel("Relative RMSE")
+        plt.ylabel("Relative MSE")
         plt.yscale("log")  # 相对RMSE跨好几个数量级时更清楚；不想用就删掉这行
         plt.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.6)
         plt.legend()
@@ -254,7 +265,7 @@ def main():
         plt.savefig(out_png, dpi=300)
         plt.close()
 
-    # -------- (A) interval relative RMSE (independent of plot times) --------
+    # -------- (A) interval relative MSE (independent of plot times) --------
     if args.mse_interval.strip():
         a, b = _parse_interval(args.mse_interval)
         rows, mean_p, mean_s = mse_over_interval(
@@ -264,24 +275,24 @@ def main():
             model_p=model_p, model_s=model_s
         )
         print(f"[RMSE-INTERVAL] [{a:g},{b:g}] with N={args.mse_interval_n}: "
-              f"mean_rel_rmse_physical={mean_p:.6e}  mean_rel_rmse_ssv={mean_s:.6e}")
+              f"mean_rel_mse_physical={mean_p:.6e}  mean_rel_mse_ssv={mean_s:.6e}")
 
         out_path = args.mse_interval_out.strip() or (os.path.splitext(args.out)[0] + f"_rmse_interval_{args.mse_interval_n}.csv")
         try:
             os.makedirs(os.path.dirname(out_path), exist_ok=True) if os.path.dirname(out_path) else None
             with open(out_path, "w", encoding="utf-8") as f:
-                f.write("t,rmse_physical,rmse_ssv\n")
+                f.write("t,relmse_physical,relmse_ssv\n")
                 for tval, mp, ms in rows:
                     f.write(f"{tval},{mp},{ms}\n")
                 f.write(f"mean,{mean_p},{mean_s}\n")
-            print(f"[mse_interval] saved interval relative RRMSEs to {out_path}")
+            print(f"[mse_interval] saved interval relative RelMSEs to {out_path}")
         except Exception as e:
-            print(f"[mse_interval] WARNING: failed to save interval relative RRMSEs: {e}")
+            print(f"[mse_interval] WARNING: failed to save interval relative RelMSEs: {e}")
 
         # ---- plot interval mse (ONLY) ----
         interval_png = os.path.splitext(out_path)[0] + ".png"
         plot_mse_csv(out_path, interval_png)
-        print(f"[mse_interval] saved interval relative RMSE plot to {interval_png}")
+        print(f"[mse_interval] saved interval relative MSE plot to {interval_png}")
 
 
     # -------- (B) plotting + per-plot-time MSE (original behavior) --------
@@ -338,21 +349,30 @@ def main():
             zpad = 0.02 * (zmax_row - zmin_row)
         zlo, zhi = zmin_row - zpad, zmax_row + zpad
 
+        row_axes = []
         for c, Z in enumerate([WT, Yp, Ys]):
             ax = fig.add_subplot(max(nrows, 1), 3, r * 3 + c + 1, projection="3d")
             ax.plot_surface(
                 X.cpu().numpy(), Y.cpu().numpy(), Z,
-                rstride=6, cstride=6,
-                linewidth=0.3,
-                edgecolor="k",
-                color="#66CCFF",
+                rstride=RS, cstride=CS,
+                linewidth=EDGE_LW,
+                edgecolor=EDGE_COLOR,
+                color=SURF_COLORS[c],
+                alpha=SURF_ALPHAS[c],
                 antialiased=True,
             )
-            ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.6)
-            title = ["Truth ω(x,y)", "Physical pred ω(x,y)", "SSV pred→ω(x,y)"][c]
-            ax.set_title(f"t={tval:g}  {title}")
+            ax.grid(True, linestyle="--", linewidth=0.35, alpha=0.45)
+            row_axes.append(ax)
+                        # compact titles; put t-label on the left of each row instead of repeating
+            if c == 0:
+                ax.set_title("Truth ω(x,y)")
+            elif c == 1:
+                ax.set_title(f"Physical  (RelMSE={mp:.3e})")
+            else:
+                ax.set_title(f"SSV  (RelMSE={ms:.3e})")
             ax.set_xlabel("x")
             ax.set_ylabel("y")
+            ax.view_init(elev=VIEW_ELEV, azim=VIEW_AZIM)
 
             # (x,y): fixed within this row (same t), but varies with t across rows
             ax.set_xlim(-R, R)
@@ -361,15 +381,22 @@ def main():
             # (z): fixed within this row (same t), but varies with t across rows
             ax.set_zlim(zlo, zhi)
 
+        # Put the time label on the left of each row (avoid repeating in every panel title)
+        if row_axes:
+            y0 = min(a.get_position().y0 for a in row_axes)
+            y1 = max(a.get_position().y1 for a in row_axes)
+            ymid = 0.5 * (y0 + y1)
+            fig.text(0.01, ymid, f"t={tval:g}", va="center", ha="left", fontsize=12)
 
-    fig.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.95, wspace=0.25, hspace=0.35)
+
+    fig.subplots_adjust(left=0.09, right=0.97, bottom=0.05, top=0.95, wspace=0.25, hspace=0.35)
 
     # save per-plot-time RMSEs
     mse_path = args.mse_out.strip() or (os.path.splitext(args.out)[0] + "_rmse.csv")
     try:
         os.makedirs(os.path.dirname(mse_path), exist_ok=True) if os.path.dirname(mse_path) else None
         with open(mse_path, "w", encoding="utf-8") as f:
-            f.write("t,rmse_physical,rmse_ssv\n")
+            f.write("t,relmse_physical,relmse_ssv\n")
             for tval, mp, ms in mse_rows:
                 f.write(f"{tval},{mp},{ms}\n")
         print(f"[compare_surface3d_physical] saved plot-time RMSEs to {mse_path}")
@@ -390,8 +417,8 @@ def main():
                 # skip rows like "mean,..." if you ever append them
                 try:
                     t = float(row["t"])
-                    p = float(row["rmse_physical"])
-                    s = float(row["rmse_ssv"])
+                    p = float(row["relmse_physical"])
+                    s = float(row["relmse_ssv"])
                 except Exception:
                     continue
                 ts.append(t); mp.append(p); ms.append(s)
@@ -399,10 +426,10 @@ def main():
         ts = np.asarray(ts); mp = np.asarray(mp); ms = np.asarray(ms)
 
         plt.figure()
-        plt.plot(ts, mp, label="rel_rmse_physical")
-        plt.plot(ts, ms, label="rel_rmse_ssv")
+        plt.plot(ts, mp, label="RelMse_physical")
+        plt.plot(ts, ms, label="RelMse_ssv")
         plt.xlabel("t")
-        plt.ylabel("Relative RMSE")
+        plt.ylabel("Relative MSE")
         plt.yscale("log")  # 相对RMSE跨好几个数量级时更清楚；不想用就删掉这行
         plt.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.6)
         plt.legend()
